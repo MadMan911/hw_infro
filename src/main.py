@@ -1,0 +1,83 @@
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
+
+from src.config import settings
+from src.gateway.middleware import PrometheusMiddleware, metrics_endpoint
+from src.gateway.router import router as gateway_router
+from src.llm.balancer import BalancingStrategy, LLMBalancer
+from src.llm.mock_provider import MockProvider
+
+logger = logging.getLogger(__name__)
+
+
+def _create_providers() -> list:
+    """Build provider list from settings."""
+    providers = []
+
+    # Mock providers (always available)
+    for i, url in enumerate(settings.mock_llm_urls.split(","), start=1):
+        url = url.strip()
+        if url:
+            providers.append(MockProvider(name=f"mock-llm-{i}", base_url=url))
+
+    # OpenAI (only if key is set)
+    if settings.openai_api_key:
+        from src.llm.openai_provider import OpenAIProvider
+        providers.append(OpenAIProvider(api_key=settings.openai_api_key))
+
+    # Anthropic (only if key is set)
+    if settings.anthropic_api_key:
+        from src.llm.anthropic_provider import AnthropicProvider
+        providers.append(AnthropicProvider(api_key=settings.anthropic_api_key))
+
+    return providers
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    providers = _create_providers()
+    strategy = BalancingStrategy(settings.balancing_strategy)
+    app.state.balancer = LLMBalancer(providers=providers, strategy=strategy)
+    logger.info(
+        "Balancer initialized: %d providers, strategy=%s",
+        len(providers),
+        strategy.value,
+    )
+
+    # Setup telemetry (non-fatal if collector is not available)
+    try:
+        from src.telemetry.otel_setup import setup_telemetry
+        setup_telemetry(app, settings.otel_service_name, settings.otel_exporter_otlp_endpoint)
+    except Exception:
+        logger.warning("OTel setup failed, continuing without telemetry")
+
+    yield
+
+    # Shutdown
+    await app.state.balancer.close()
+    logger.info("Balancer shut down")
+
+
+app = FastAPI(
+    title="Agent Platform",
+    description="Multi-agent tech support platform with LLM balancing",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(PrometheusMiddleware)
+
+# Routes
+app.include_router(gateway_router)
+app.add_route("/metrics", metrics_endpoint)
