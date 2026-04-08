@@ -35,34 +35,34 @@
        │ HTTP/SSE
        ▼
 ┌──────────────────────────────────────────────────────┐
-│                   API Gateway (FastAPI)               │
+│                   API Gateway (FastAPI)              │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
-│  │ Auth       │  │ Guardrails │  │ OTel Middleware │  │
-│  │ Middleware │  │ Filter     │  │ (traces/metrics)│  │
+│  │ Auth       │  │ Guardrails │  │ OTel Middleware│  │
+│  │ Middleware │  │ Filter     │  │(traces/metrics)│  │
 │  └────────────┘  └────────────┘  └────────────────┘  │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
               ┌─────────────────┐
-              │  Request Router  │  ← классифицирует тип запроса
+              │  Request Router │  ← классифицирует тип запроса
               │  (LLM-based)    │     (FAQ/diagnostics/billing/human)
               └────────┬────────┘
                        │
                        ▼
               ┌─────────────────┐
-              │  Agent Registry  │  ← хранит Agent Cards
+              │  Agent Registry │  ← хранит Agent Cards
               └────────┬────────┘
                        │ выбирает агента
                        ▼
          ┌─────────────────────────────┐
-         │      Selected Agent          │
-         │  (FAQ/Diag/Billing/Human)    │
+         │      Selected Agent         │
+         │  (FAQ/Diag/Billing/Human)   │
          └─────────────┬───────────────┘
                        │ LLM-вызовы
                        ▼
               ┌─────────────────┐
-              │  LLM Balancer    │  ← round-robin / weighted /
-              │  (Proxy)         │     latency-based / health-aware
+              │  LLM Balancer   │  ← round-robin / weighted /
+              │  (Proxy)        │     latency-based / health-aware
               └────────┬────────┘
                        │
            ┌───────────┼───────────┐
@@ -73,12 +73,12 @@
      └──────────┘ └──────────┘ └──────────┘
 
 ┌──────────────────────────────────────────────────────┐
-│                 Observability Stack                    │
+│                 Observability Stack                  │
 │  ┌────────────┐  ┌────────────┐  ┌──────────┐        │
 │  │ Prometheus │  │  Grafana   │  │  MLFlow  │        │
 │  └────────────┘  └────────────┘  └──────────┘        │
 │  ┌─────────────────────────────────────────┐         │
-│  │     OpenTelemetry Collector              │         │
+│  │     OpenTelemetry Collector             │         │
 │  └─────────────────────────────────────────┘         │
 └──────────────────────────────────────────────────────┘
 ```
@@ -298,7 +298,6 @@ AUTH_SECRET_KEY=change-me-in-production
       async def chat_completion(self, messages, model, stream=False) -> ...:
           """Non-streaming: возвращает полный ответ.
              Streaming: возвращает AsyncIterator[str]."""
-
       @abstractmethod
       async def health_check(self) -> bool: ...
   ```
