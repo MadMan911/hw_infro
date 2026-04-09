@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # MLFlow
     mlflow_tracking_uri: str = "http://mlflow:5000"
 
+    # Agent LLM models
+    agent_cheap_model: str = "openai/gpt-4o-mini"
+    agent_strong_model: str = "openrouter/deepseek/deepseek-chat-v3-0324"
+    agent_max_steps: int = 6
+    openrouter_api_key: str = ""
+
     # Auth
     auth_secret_key: str = "change-me-in-production"
 

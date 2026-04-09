@@ -83,6 +83,57 @@ async def _wrap_sse(stream):
     yield "data: [DONE]\n\n"
 
 
+# ─── Agent chat endpoint ───
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: str | None = None
+
+
+@router.post("/chat")
+async def chat(body: ChatRequest, request: Request):
+    """Multi-agent chat endpoint. Routes through LangGraph."""
+    graph = request.app.state.agent_graph
+    if graph is None:
+        raise HTTPException(status_code=503, detail="Agent graph not initialized")
+
+    try:
+        from src.routing.graph import run_graph
+        result = await run_graph(graph, body.message)
+
+        return {
+            "response": result.get("final_response", ""),
+            "agent_trace": result.get("agent_trace", []),
+            "visited_agents": result.get("visited_agents", []),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agent processing failed: {e}")
+
+
+# ─── Agent registry endpoints ───
+
+
+@router.get("/agents")
+async def list_agents(request: Request):
+    registry = request.app.state.agent_registry
+    agents = await registry.list_all()
+    return {"agents": [a.model_dump() for a in agents]}
+
+
+@router.get("/agents/{agent_id}")
+async def get_agent(agent_id: str, request: Request):
+    registry = request.app.state.agent_registry
+    try:
+        card = await registry.get(agent_id)
+        return card.model_dump()
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+
+# ─── Health & providers ───
+
+
 @router.get("/health")
 async def health(request: Request):
     balancer = request.app.state.balancer

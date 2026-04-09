@@ -48,6 +48,38 @@ async def lifespan(app: FastAPI):
         strategy.value,
     )
 
+    # Setup agents and LangGraph
+    try:
+        from src.agents.billing_agent import BillingAgent
+        from src.agents.diagnostics_agent import DiagnosticsAgent
+        from src.agents.faq_agent import FaqAgent
+        from src.agents.human_router_agent import HumanRouterAgent
+        from src.agents.registry import AgentRegistry
+        from src.routing.classifier import RequestClassifier
+        from src.routing.graph import build_graph
+
+        registry = AgentRegistry()
+        agents = {
+            "faq": FaqAgent(model=settings.agent_cheap_model, max_steps=settings.agent_max_steps),
+            "diagnostics": DiagnosticsAgent(model=settings.agent_strong_model, max_steps=settings.agent_max_steps),
+            "billing": BillingAgent(model=settings.agent_cheap_model, max_steps=settings.agent_max_steps),
+            "human_router": HumanRouterAgent(),
+        }
+
+        for agent in agents.values():
+            await registry.register(agent.card)
+
+        classifier = RequestClassifier(model=settings.agent_cheap_model)
+        graph = build_graph(agents, classifier)
+
+        app.state.agent_registry = registry
+        app.state.agent_graph = graph
+        logger.info("Agent graph initialized: %d agents", len(agents))
+    except Exception:
+        logger.warning("Agent graph setup failed, /chat will be unavailable", exc_info=True)
+        app.state.agent_registry = AgentRegistry()
+        app.state.agent_graph = None
+
     # Setup telemetry (non-fatal if collector is not available)
     try:
         from src.telemetry.otel_setup import setup_telemetry

@@ -100,18 +100,18 @@
 
 ---
 
-## Фаза 0: Инициализация проекта
+## Фаза 0: Инициализация проекта ✅
 
-### 0.1 Структура репозитория
+### 0.1 Структура репозитория ✅
 Создать файловую структуру:
 ```
 hw_infro/
 ├── plan.md
-├── README.md
+├── CLAUDE.md
 ├── docker-compose.yml
 ├── .env.example
 ├── .gitignore
-├── pyproject.toml                  # зависимости (poetry/pip)
+├── pyproject.toml
 ├── requirements.txt
 │
 ├── src/
@@ -121,39 +121,46 @@ hw_infro/
 │   │
 │   ├── gateway/                    # API Gateway
 │   │   ├── __init__.py
-│   │   ├── router.py               # HTTP-роуты (/chat, /health, ...)
-│   │   └── middleware.py            # OTel middleware, auth, guardrails
+│   │   ├── router.py               # HTTP-роуты (/chat, /v1/chat/completions, /health, ...)
+│   │   └── middleware.py            # Prometheus middleware
 │   │
 │   ├── agents/                     # Агенты
 │   │   ├── __init__.py
-│   │   ├── base.py                 # BaseAgent ABC
+│   │   ├── base.py                 # BaseAgent ABC с ReAct loop (LiteLLM)
 │   │   ├── registry.py             # AgentRegistry + Agent Card
 │   │   ├── faq_agent.py
 │   │   ├── diagnostics_agent.py
 │   │   ├── billing_agent.py
-│   │   └── human_router_agent.py
+│   │   ├── human_router_agent.py
+│   │   └── tools/                  # Доменные инструменты агентов
+│   │       ├── __init__.py
+│   │       ├── common.py           # escalate tool (общий)
+│   │       ├── faq_tools.py        # search_faq
+│   │       ├── diagnostics_tools.py # check_service_status, lookup_error_code, ...
+│   │       └── billing_tools.py    # get_account_info, get_tariff_info, ...
 │   │
-│   ├── llm/                        # LLM-слой
+│   ├── llm/                        # LLM-слой (для балансировщика mock/real провайдеров)
 │   │   ├── __init__.py
 │   │   ├── provider.py             # BaseLLMProvider ABC
 │   │   ├── openai_provider.py
 │   │   ├── anthropic_provider.py
 │   │   ├── mock_provider.py
-│   │   ├── registry.py             # ProviderRegistry (динамическая регистрация)
+│   │   ├── registry.py             # ProviderRegistry (динамическая регистрация) [TODO]
 │   │   └── balancer.py             # LLMBalancer (стратегии)
 │   │
 │   ├── routing/                    # Маршрутизация запросов
 │   │   ├── __init__.py
-│   │   └── classifier.py           # RequestClassifier (LLM или rule-based)
+│   │   ├── classifier.py           # RequestClassifier (LLM + rule-based fallback)
+│   │   └── graph.py                # LangGraph: мультиагентный граф с эскалацией
 │   │
-│   ├── guardrails/                 # Guardrails
+│   ├── guardrails/                 # Guardrails [TODO]
 │   │   ├── __init__.py
 │   │   ├── engine.py               # GuardrailsEngine
 │   │   ├── prompt_injection.py     # детектор prompt injection
 │   │   ├── pii_filter.py           # фильтр ПД
 │   │   └── secret_detector.py      # детектор секретов
 │   │
-│   ├── auth/                       # Авторизация
+│   ├── auth/                       # Авторизация [TODO]
 │   │   ├── __init__.py
 │   │   └── token_auth.py           # TokenAuth middleware
 │   │
@@ -161,7 +168,7 @@ hw_infro/
 │       ├── __init__.py
 │       ├── otel_setup.py           # настройка OpenTelemetry
 │       ├── metrics.py              # кастомные метрики (TTFT, TPOT, ...)
-│       └── mlflow_tracer.py        # MLFlow integration
+│       └── mlflow_tracer.py        # MLFlow integration [TODO]
 │
 ├── mock_llm_server/                # Mock LLM-сервер (отдельный сервис)
 │   ├── Dockerfile
@@ -263,7 +270,7 @@ AUTH_SECRET_KEY=change-me-in-production
 
 ---
 
-## Фаза 1: Уровень 1 — LLM-провайдеры, балансировщик, мониторинг [10 баллов]
+## Фаза 1: Уровень 1 — LLM-провайдеры, балансировщик, мониторинг [10 баллов] ✅
 
 ### 1.1 Конфигурация (`src/config.py`)
 
@@ -476,7 +483,7 @@ services:
 
 ---
 
-## Фаза 2: Уровень 2 — Реестры и умная маршрутизация [20 баллов]
+## Фаза 2: Уровень 2 — Реестры и умная маршрутизация [20 баллов] (в процессе)
 
 ### 2.1 Agent Card и Agent Registry (`src/agents/registry.py`)
 
