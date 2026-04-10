@@ -7,7 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, AsyncIterator
 
 from src.llm.provider import BaseLLMProvider, LLMResponse
-from src.telemetry.metrics import record_ttft, record_tpot
+from src.telemetry.metrics import record_tpot, record_ttft
 
 if TYPE_CHECKING:
     from src.llm.registry import ProviderRegistry
