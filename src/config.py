@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # Auth
     auth_secret_key: str = "change-me-in-production"
+    auth_enabled: bool = False
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

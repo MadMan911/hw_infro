@@ -6,7 +6,6 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from src.agents.base import AgentRequest, BaseAgent
-from src.agents.registry import AgentRegistry
 from src.routing.classifier import RequestClassifier
 
 logger = logging.getLogger(__name__)
@@ -97,7 +96,9 @@ async def classify_node(state: AgentState) -> dict:
 
     return {
         "current_agent": agent_key,
-        "agent_trace": [{"agent_id": "classifier", "method": result.method, "topic": result.topic, "confidence": result.confidence}],
+        "agent_trace": [
+            {"agent_id": "classifier", "method": result.method, "topic": result.topic, "confidence": result.confidence}
+        ],
     }
 
 

@@ -1,6 +1,6 @@
 from src.agents.base import BaseAgent
 from src.agents.registry import AgentCard
-from src.agents.tools.billing_tools import BILLING_TOOLS, BILLING_TOOL_EXECUTORS
+from src.agents.tools.billing_tools import BILLING_TOOL_EXECUTORS, BILLING_TOOLS
 
 BILLING_SYSTEM_PROMPT = """\
 Ты — специалист по биллингу компании TechCorp.

@@ -1,6 +1,6 @@
 from src.agents.base import BaseAgent
 from src.agents.registry import AgentCard
-from src.agents.tools.diagnostics_tools import DIAGNOSTICS_TOOLS, DIAGNOSTICS_TOOL_EXECUTORS
+from src.agents.tools.diagnostics_tools import DIAGNOSTICS_TOOL_EXECUTORS, DIAGNOSTICS_TOOLS
 
 DIAGNOSTICS_SYSTEM_PROMPT = """\
 Ты — инженер техподдержки компании TechCorp.

@@ -1,6 +1,6 @@
 from src.agents.base import BaseAgent
 from src.agents.registry import AgentCard
-from src.agents.tools.faq_tools import FAQ_TOOLS, FAQ_TOOL_EXECUTORS
+from src.agents.tools.faq_tools import FAQ_TOOL_EXECUTORS, FAQ_TOOLS
 
 FAQ_SYSTEM_PROMPT = """\
 Ты — помощник техподдержки компании TechCorp.
