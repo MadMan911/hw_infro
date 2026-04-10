@@ -14,7 +14,7 @@
 │  ┌─────────────────────────────────────────┐        │
 │  │  Inner loop (ReAct, LiteLLM)            │        │
 │  │  Tool calling WITHIN a single agent     │        │
-│  │  LLM → tool_call → result → LLM → ...  │        │
+│  │  LLM → tool_call → result → LLM → ...   │        │
 │  │  (max 6 iterations)                     │        │
 │  └─────────────────────────────────────────┘        │
 └─────────────────────────────────────────────────────┘
