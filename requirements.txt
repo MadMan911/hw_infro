@@ -32,3 +32,6 @@ locust>=2.23
 python-dotenv>=1.0
 python-jose[cryptography]>=3.3
 passlib>=1.7
+
+# Linting
+ruff>=0.4

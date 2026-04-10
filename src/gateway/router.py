@@ -1,12 +1,13 @@
+import asyncio
 import json
 import time
 from typing import AsyncIterator
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.telemetry.metrics import record_llm_request, record_llm_error, record_tokens
+from src.telemetry.metrics import record_llm_error, record_llm_request, record_tokens
 
 router = APIRouter()
 
@@ -147,10 +148,13 @@ async def chat(body: ChatRequest, request: Request):
                     "visited_agents": result.get("visited_agents", []),
                 }
                 yield f"data: {json.dumps(routing_event)}\n\n"
-                # Stream word by word
+                # Simulated streaming: the full response is already computed above.
+                # True token-level streaming would require passing stream=True into
+                # the LiteLLM ReAct loop and piping tokens via asyncio.Queue.
                 for word in final_response.split(" "):
                     chunk = {"type": "token", "content": word + " "}
                     yield f"data: {json.dumps(chunk)}\n\n"
+                    await asyncio.sleep(0.05)
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(_stream_response(), media_type="text/event-stream")
@@ -215,8 +219,9 @@ async def get_agent(agent_id: str, request: Request):
 async def register_agent(body: AgentCardRequest, request: Request):
     _require_scope(request, "agents:write")
     registry = request.app.state.agent_registry
-    from src.agents.registry import AgentCard
     from datetime import datetime, timezone
+
+    from src.agents.registry import AgentCard
     card = AgentCard(
         id=body.id,
         name=body.name,

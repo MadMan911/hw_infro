@@ -1,7 +1,7 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
@@ -39,6 +39,9 @@ class ReActResult:
     escalation: EscalationSignal | None = None
     model_used: str = ""
     steps: int = 0
+    ttft: float = 0.0                # duration of the first acompletion() call (Time To First Token proxy)
+    total_llm_duration: float = 0.0  # sum of all acompletion() call durations in the ReAct loop
+    output_tokens: int = 0           # total completion tokens across all steps
 
 
 class BaseAgent(ABC):
@@ -76,6 +79,8 @@ class BaseAgent(ABC):
 
     async def react_loop(self, user_message: str, context: str = "") -> ReActResult:
         """Run the ReAct loop: LLM decides which tools to call, max_steps iterations."""
+        import time
+
         import litellm
 
         messages = [{"role": "system", "content": self.get_system_prompt()}]
@@ -86,13 +91,26 @@ class BaseAgent(ABC):
         tools = self._all_tools()
         executors = self._all_executors()
 
+        _ttft: float = 0.0
+        _total_llm_dur: float = 0.0
+        _output_tokens: int = 0
+        _first_call: bool = True
+
         for step in range(self.max_steps):
+            _t0 = time.monotonic()
             response = await litellm.acompletion(
                 model=self.model,
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
             )
+            _call_dur = time.monotonic() - _t0
+            _total_llm_dur += _call_dur
+            if _first_call:
+                _ttft = _call_dur
+                _first_call = False
+            if response.usage and response.usage.completion_tokens:
+                _output_tokens += response.usage.completion_tokens
 
             choice = response.choices[0]
             message = choice.message
@@ -103,6 +121,9 @@ class BaseAgent(ABC):
                     content=message.content or "",
                     model_used=self.model,
                     steps=step + 1,
+                    ttft=_ttft,
+                    total_llm_duration=_total_llm_dur,
+                    output_tokens=_output_tokens,
                 )
 
             # Append assistant message with tool calls
@@ -125,6 +146,9 @@ class BaseAgent(ABC):
                         ),
                         model_used=self.model,
                         steps=step + 1,
+                        ttft=_ttft,
+                        total_llm_duration=_total_llm_dur,
+                        output_tokens=_output_tokens,
                     )
 
                 # Execute tool
@@ -141,14 +165,25 @@ class BaseAgent(ABC):
                 })
 
         # Max steps reached — return whatever we have
+        _t0 = time.monotonic()
         last_response = await litellm.acompletion(
             model=self.model,
             messages=messages,
         )
+        _call_dur = time.monotonic() - _t0
+        _total_llm_dur += _call_dur
+        if _first_call:
+            _ttft = _call_dur
+        if last_response.usage and last_response.usage.completion_tokens:
+            _output_tokens += last_response.usage.completion_tokens
+
         return ReActResult(
             content=last_response.choices[0].message.content or "Превышен лимит шагов обработки.",
             model_used=self.model,
             steps=self.max_steps,
+            ttft=_ttft,
+            total_llm_duration=_total_llm_dur,
+            output_tokens=_output_tokens,
         )
 
     async def handle(self, request: AgentRequest) -> AgentResponse:
@@ -166,23 +201,32 @@ class BaseAgent(ABC):
                 "target": result.escalation.target,
             }
 
-        # MLFlow tracing (non-fatal)
+        # MLFlow tracing + OTel TTFT/TPOT metrics (non-fatal)
         try:
+            from src.telemetry.metrics import record_tpot, record_ttft
             from src.telemetry.mlflow_tracer import AgentCallMetrics, get_tracer
+
+            tpot = (result.total_llm_duration / result.output_tokens) if result.output_tokens > 0 else 0.0
+            provider = self.model.split("/")[0] if "/" in self.model else self.model
+
             metrics = AgentCallMetrics(
                 agent_id=self.card.id,
                 model=result.model_used,
                 latency=latency,
                 steps=result.steps,
                 escalated=result.escalation is not None,
+                ttft=result.ttft,
+                tpot=tpot,
             )
+            record_ttft(provider, result.model_used, result.ttft)
+            record_tpot(provider, result.model_used, tpot)
             await get_tracer().trace_agent_call(
                 request_message=request.message,
                 response_content=result.content,
                 metrics=metrics,
             )
         except Exception:
-            pass
+            logger.debug("Telemetry recording failed (non-fatal)", exc_info=True)
 
         return AgentResponse(
             content=result.content,

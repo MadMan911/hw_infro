@@ -1,12 +1,13 @@
 import time
+from typing import Awaitable, Callable
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseCall
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
-
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from starlette.responses import JSONResponse, Response
 from starlette.responses import Response as StarletteResponse
 
+RequestResponseCall = Callable[[Request], Awaitable[Response]]
 
 # Prometheus metrics (exposed on /metrics)
 REQUEST_COUNT = Counter(

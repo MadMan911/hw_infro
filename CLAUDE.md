@@ -91,13 +91,14 @@ ruff format src/
 
 `app` (port 8000), `mock-llm-1/2/3` (configurable latency/errors), `prometheus` (9090), `grafana` (3000), `mlflow` (5000), `otel-collector` (4317/4318)
 
-## Not yet implemented
+## Implemented features
 
-- Guardrails (`src/guardrails/`) — prompt injection, PII filter, secret detector
-- Auth (`src/auth/`) — JWT token-based authorization
-- Provider Registry (`src/llm/registry.py`) — dynamic LLM provider registration
-- Health-aware routing + Circuit Breaker + Failover in balancer
-- TTFT/TPOT metrics + MLFlow tracer
-- Load tests (Locust)
-- REST API for agent/provider management (POST/DELETE)
-- Streaming POST /chat
+- **Guardrails** (`src/guardrails/`) — prompt injection, PII filter (BLOCK/MASK), secret detector
+- **Auth** (`src/auth/token_auth.py`) — JWT with 6 scopes, JTI revocation; enabled via `AUTH_ENABLED=true`
+- **Provider Registry** (`src/llm/registry.py`) — dynamic LLM provider CRUD via REST API
+- **Circuit Breaker + Health-aware routing** (`src/llm/balancer.py`) — CLOSED/OPEN/HALF_OPEN per provider, auto failover
+- **TTFT/TPOT metrics** (`src/telemetry/metrics.py`) — OTel histograms for latency, tokens, cost
+- **MLFlow tracer** (`src/telemetry/mlflow_tracer.py`) — logs agent runs with params, metrics, artifacts
+- **Load tests** (`load_tests/locustfile.py`) — Locust with SupportUser and LLMProxyUser
+- **REST API** for agents (`/agents`) and providers (`/providers`) — full CRUD with scope checks
+- **Streaming POST /chat** — SSE with simulated word-level streaming (true token streaming not implemented)

@@ -1,5 +1,8 @@
 import base64
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 # Patterns that indicate prompt injection attempts
 _PATTERNS: list[tuple[re.Pattern, float]] = [
@@ -32,7 +35,7 @@ def _check_base64_encoded(text: str) -> float:
             if score >= BLOCK_THRESHOLD:
                 return score
         except Exception:
-            pass
+            logger.debug("Base64 decode check failed (non-fatal)", exc_info=True)
     return 0.0
 
 
