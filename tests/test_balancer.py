@@ -87,7 +87,7 @@ class TestNoProvider:
     @pytest.mark.asyncio
     async def test_raises_on_unsupported_model(self, providers):
         balancer = LLMBalancer(providers, strategy=BalancingStrategy.ROUND_ROBIN)
-        with pytest.raises(ValueError, match="No provider supports model"):
+        with pytest.raises(ValueError, match="No provider available for model"):
             await balancer.route_request(
                 [{"role": "user", "content": "hi"}], "nonexistent-model"
             )

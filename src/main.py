@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.gateway.middleware import PrometheusMiddleware, metrics_endpoint
+from src.gateway.middleware import PrometheusMiddleware, AuthMiddleware, metrics_endpoint
 from src.gateway.router import router as gateway_router
 from src.llm.balancer import BalancingStrategy, LLMBalancer
 from src.llm.mock_provider import MockProvider
@@ -80,12 +80,31 @@ async def lifespan(app: FastAPI):
         app.state.agent_registry = AgentRegistry()
         app.state.agent_graph = None
 
+    # Setup Provider Registry
+    from src.llm.registry import ProviderRegistry
+    app.state.provider_registry = ProviderRegistry()
+
+    # Setup Guardrails
+    try:
+        from src.guardrails.engine import GuardrailsEngine
+        app.state.guardrails = GuardrailsEngine()
+        logger.info("Guardrails initialized")
+    except Exception:
+        logger.warning("Guardrails setup failed", exc_info=True)
+        app.state.guardrails = None
+
+    # Auth enabled flag (can be toggled via env in production)
+    app.state.auth_enabled = False  # set True to enforce JWT on all endpoints
+
     # Setup telemetry (non-fatal if collector is not available)
     try:
         from src.telemetry.otel_setup import setup_telemetry
         setup_telemetry(app, settings.otel_service_name, settings.otel_exporter_otlp_endpoint)
     except Exception:
         logger.warning("OTel setup failed, continuing without telemetry")
+
+    # Start balancer background health checks
+    await app.state.balancer.start_health_checks(interval=30.0)
 
     yield
 
@@ -109,6 +128,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(PrometheusMiddleware)
+app.add_middleware(AuthMiddleware)
 
 # Routes
 app.include_router(gateway_router)

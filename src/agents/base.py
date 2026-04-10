@@ -153,8 +153,11 @@ class BaseAgent(ABC):
 
     async def handle(self, request: AgentRequest) -> AgentResponse:
         """Process a user request using the ReAct loop."""
+        import time
+        start = time.monotonic()
         context = request.metadata.get("escalation_reason", "")
         result = await self.react_loop(request.message, context=context)
+        latency = time.monotonic() - start
 
         escalation = None
         if result.escalation:
@@ -162,6 +165,24 @@ class BaseAgent(ABC):
                 "reason": result.escalation.reason,
                 "target": result.escalation.target,
             }
+
+        # MLFlow tracing (non-fatal)
+        try:
+            from src.telemetry.mlflow_tracer import AgentCallMetrics, get_tracer
+            metrics = AgentCallMetrics(
+                agent_id=self.card.id,
+                model=result.model_used,
+                latency=latency,
+                steps=result.steps,
+                escalated=result.escalation is not None,
+            )
+            await get_tracer().trace_agent_call(
+                request_message=request.message,
+                response_content=result.content,
+                metrics=metrics,
+            )
+        except Exception:
+            pass
 
         return AgentResponse(
             content=result.content,
