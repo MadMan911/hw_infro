@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # Auth
     auth_secret_key: str = "change-me-in-production"
-    auth_enabled: bool = False
+    auth_enabled: bool = False  # set True to enforce JWT on all protected endpoints
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

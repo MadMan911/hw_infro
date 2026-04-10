@@ -52,3 +52,10 @@ class ProviderRegistry:
 
     def get_by_model(self, model: str) -> list[ProviderConfig]:
         return [c for c in self.get_active() if model in c.models]
+
+    def get_by_name(self, name: str) -> "ProviderConfig | None":
+        """Look up a provider config by id or name (returns None if not found)."""
+        for config in self._store.values():
+            if config.id == name or config.name == name:
+                return config
+        return None

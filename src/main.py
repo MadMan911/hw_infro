@@ -80,9 +80,11 @@ async def lifespan(app: FastAPI):
         app.state.agent_registry = AgentRegistry()
         app.state.agent_graph = None
 
-    # Setup Provider Registry
+    # Setup Provider Registry and wire it into the balancer
     from src.llm.registry import ProviderRegistry
-    app.state.provider_registry = ProviderRegistry()
+    provider_registry = ProviderRegistry()
+    app.state.provider_registry = provider_registry
+    app.state.balancer._provider_registry = provider_registry
 
     # Setup Guardrails
     try:
@@ -93,7 +95,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Guardrails setup failed", exc_info=True)
         app.state.guardrails = None
 
-    # Auth enabled flag (set AUTH_ENABLED=true in env to enforce JWT on all endpoints)
+    # Auth enabled flag — read from AUTH_ENABLED env var (default: False)
     app.state.auth_enabled = settings.auth_enabled
 
     # Setup telemetry (non-fatal if collector is not available)

@@ -2,10 +2,15 @@ import asyncio
 import logging
 import random
 import time
+from collections import deque
 from enum import Enum
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator
 
 from src.llm.provider import BaseLLMProvider, LLMResponse
+from src.telemetry.metrics import record_ttft, record_tpot
+
+if TYPE_CHECKING:
+    from src.llm.registry import ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +85,12 @@ class LLMBalancer:
         providers: list[BaseLLMProvider],
         strategy: BalancingStrategy = BalancingStrategy.ROUND_ROBIN,
         weights: dict[str, float] | None = None,
+        provider_registry: "ProviderRegistry | None" = None,
     ):
         self.providers = providers
         self.strategy = strategy
         self.weights = weights or {}
+        self._provider_registry = provider_registry
         self._rr_index = 0
         self._lock = asyncio.Lock()
         # latency tracking: provider_name -> rolling average ms
@@ -91,6 +98,10 @@ class LLMBalancer:
         # circuit breakers: provider_name -> CircuitBreaker
         self._circuits: dict[str, CircuitBreaker] = {
             p.name: CircuitBreaker(p.name) for p in providers
+        }
+        # rate limiting: provider_name -> deque of request timestamps (for sliding window)
+        self._rate_window: dict[str, deque] = {
+            p.name: deque() for p in providers
         }
         # background health-check task
         self._health_task: asyncio.Task | None = None
@@ -121,13 +132,53 @@ class LLMBalancer:
         if self._health_task:
             self._health_task.cancel()
 
+    # ─── Registry helpers ───
+
+    def _get_registry_config(self, provider_name: str):
+        """Look up provider config from registry by name/id (returns None if not found)."""
+        if self._provider_registry is None:
+            return None
+        try:
+            return self._provider_registry.get_by_name(provider_name)
+        except Exception:
+            return None
+
+    def _is_rate_limited(self, provider_name: str) -> bool:
+        """Check if provider exceeded its rate_limit_rpm from registry."""
+        config = self._get_registry_config(provider_name)
+        if config is None or config.rate_limit_rpm <= 0:
+            return False
+        window = self._rate_window[provider_name]
+        now = time.monotonic()
+        # prune entries older than 60 seconds
+        while window and now - window[0] > 60.0:
+            window.popleft()
+        return len(window) >= config.rate_limit_rpm
+
+    def _record_rate_tick(self, provider_name: str) -> None:
+        """Record a request timestamp for rate limiting."""
+        window = self._rate_window.get(provider_name)
+        if window is not None:
+            window.append(time.monotonic())
+
     # ─── Provider selection ───
 
     def get_providers_for_model(self, model: str) -> list[BaseLLMProvider]:
-        return [
-            p for p in self.providers
-            if p.supports_model(model) and self._circuits[p.name].is_available()
-        ]
+        available = []
+        for p in self.providers:
+            if not p.supports_model(model):
+                continue
+            if not self._circuits[p.name].is_available():
+                continue
+            # Skip providers explicitly disabled in registry
+            config = self._get_registry_config(p.name)
+            if config is not None and config.status == "disabled":
+                continue
+            if self._is_rate_limited(p.name):
+                logger.warning("Provider %s skipped: rate limit exceeded", p.name)
+                continue
+            available.append(p)
+        return available
 
     async def _next_round_robin(self, candidates: list[BaseLLMProvider]) -> BaseLLMProvider:
         async with self._lock:
@@ -136,11 +187,26 @@ class LLMBalancer:
             return provider
 
     def _next_weighted(self, candidates: list[BaseLLMProvider]) -> BaseLLMProvider:
-        w = [self.weights.get(p.name, 1.0) for p in candidates]
-        return random.choices(candidates, weights=w, k=1)[0]
+        weights = []
+        for p in candidates:
+            # Registry weight takes precedence over static weights dict
+            config = self._get_registry_config(p.name)
+            if config is not None:
+                weights.append(config.weight)
+            else:
+                weights.append(self.weights.get(p.name, 1.0))
+        return random.choices(candidates, weights=weights, k=1)[0]
 
     def _next_latency_based(self, candidates: list[BaseLLMProvider]) -> BaseLLMProvider:
-        return min(candidates, key=lambda p: self._latencies.get(p.name, 0.0))
+        def score(p: BaseLLMProvider) -> float:
+            latency = self._latencies.get(p.name, 0.0)
+            # Higher priority (lower number) divides the latency score → preferred
+            config = self._get_registry_config(p.name)
+            priority = config.priority if config is not None else 1
+            priority = max(priority, 1)
+            return latency / priority
+
+        return min(candidates, key=score)
 
     async def _select_provider(
         self, model: str, exclude: set[str] | None = None
@@ -168,6 +234,32 @@ class LLMBalancer:
         prev = self._latencies.get(provider_name, latency_ms)
         self._latencies[provider_name] = alpha * latency_ms + (1 - alpha) * prev
 
+    async def _wrap_stream_with_metrics(
+        self,
+        stream: AsyncIterator[str],
+        provider_name: str,
+        model: str,
+        request_start: float,
+    ) -> AsyncIterator[str]:
+        """Wrap a streaming response to record TTFT and TPOT metrics."""
+        first_token = True
+        token_count = 0
+        stream_start = time.monotonic()
+
+        async for chunk in stream:
+            if first_token:
+                ttft = time.monotonic() - request_start
+                record_ttft(provider_name, model, ttft)
+                first_token = False
+            # approximate token count by whitespace-split words
+            token_count += max(1, len(chunk.split()))
+            yield chunk
+
+        if token_count > 0:
+            total_time = time.monotonic() - stream_start
+            tpot = total_time / token_count
+            record_tpot(provider_name, model, tpot)
+
     # ─── Request routing with failover ───
 
     async def route_request(
@@ -178,6 +270,7 @@ class LLMBalancer:
         **kwargs,
     ) -> "LLMResponse | AsyncIterator[str]":
         tried: set[str] = set()
+        request_start = time.monotonic()
 
         for attempt in range(self.MAX_RETRIES + 1):
             try:
@@ -192,10 +285,12 @@ class LLMBalancer:
                 if stream:
                     result = await provider.chat_completion(messages, model, stream=True, **kwargs)
                     cb.record_success()
-                    return result
+                    self._record_rate_tick(provider.name)
+                    return self._wrap_stream_with_metrics(result, provider.name, model, request_start)
 
                 response = await provider.chat_completion(messages, model, stream=False, **kwargs)
                 cb.record_success()
+                self._record_rate_tick(provider.name)
                 self._update_latency(provider.name, response.latency_ms)
                 return response
 
