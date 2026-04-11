@@ -4,6 +4,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
+
+from src.config import settings
+from src.gateway.middleware import AuthMiddleware, PrometheusMiddleware, metrics_endpoint
+from src.gateway.router import router as gateway_router
+from src.llm.balancer import BalancingStrategy, LLMBalancer
+from src.llm.mock_provider import MockProvider
+
+logger = logging.getLogger(__name__)
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -17,15 +26,6 @@ class UTF8JSONResponse(JSONResponse):
             indent=None,
             separators=(",", ":"),
         ).encode("utf-8")
-from starlette.middleware.cors import CORSMiddleware
-
-from src.config import settings
-from src.gateway.middleware import AuthMiddleware, PrometheusMiddleware, metrics_endpoint
-from src.gateway.router import router as gateway_router
-from src.llm.balancer import BalancingStrategy, LLMBalancer
-from src.llm.mock_provider import MockProvider
-
-logger = logging.getLogger(__name__)
 
 
 def _create_providers() -> list:
