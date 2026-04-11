@@ -1,7 +1,22 @@
+import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+
+class UTF8JSONResponse(JSONResponse):
+    """JSONResponse that does not escape non-ASCII characters."""
+
+    def render(self, content) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+        ).encode("utf-8")
 from starlette.middleware.cors import CORSMiddleware
 
 from src.config import settings
@@ -120,6 +135,7 @@ app = FastAPI(
     description="Multi-agent tech support platform with LLM balancing",
     version="0.1.0",
     lifespan=lifespan,
+    default_response_class=UTF8JSONResponse,
 )
 
 # Middleware
